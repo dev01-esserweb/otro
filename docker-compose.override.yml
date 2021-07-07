@@ -1,0 +1,8 @@
+services:
+    test:
+        ports:
+            - 80:80
+
+networks:
+    traefik-public:
+        external: false
