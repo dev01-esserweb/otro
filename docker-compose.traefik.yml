@@ -1,5 +1,4 @@
 services:
-
     traefik:
       # Use the latest v2.3.x Traefik image available
       image: traefik:v2.3
@@ -68,14 +67,14 @@ services:
         # any other service that needs to be publicly available with HTTPS
         - traefik-public
   
-  volumes:
+volumes:
     # Create a volume to store the certificates, there is a constraint to make sure
     # Traefik is always deployed to the same Docker node with the same volume containing
     # the HTTPS certificates
     traefik-public-certificates:
-  
-  networks:
+
+networks:
     # Use the previously created public network "traefik-public", shared with other
     # services that need to be publicly available via this Traefik
     traefik-public:
-      external: true
+        external: true
