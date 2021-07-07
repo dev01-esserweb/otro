@@ -1,51 +1,81 @@
 services:
+
     traefik:
-        # Use traefik v2.3.x image
-        image: traefik:v2.3
-        ports:
-            # Puerto 80, por defecto HTTP, necesario para redireccionar a HTTPS
-            - 80:80
-            # Puerto 443, por defecto HTTPS
-            - 443:443
-        restart: always
-        volumes:
-            # Para que Traefik pueda leer las etiquetas de otros servicios
-            # Canal de comunicación entre Traefik y nuestros servicios
-            - /var/run/docker.sock:/var/run/docker.sock:ro
-            # Se monta un volumen para almacenar los certificados
-            - traefik-public-certificates:/certificates
-        command:
-            # Habilitar Docker in Traefik
-            - --providers.docker
-            # No exponer todos los servicios de Docker, solamente los que están explícitamente expuestos
-            - --providers.docker.exposedbydefault=false
-            # Crea un punto de entrada http en el puerto 80
-            - --entrypoints.http.address=:80
-            # Crea un punto de entrada 'https' escuchando en el puerto 443
-            - --entrypoints.https.address=:443
-            # Crea el resolvedor de certificados 'le' para Let's Encrypt
-            - --certificatesresolvers.le.acme.email=admin@carlatino.com
-            # Almacena los certificados en el volumen
-            - --certificatesresolvers.le.storage=/certificates/acme.json
-            # Usamos el TLS Challenge para Let's Encrypt
-            - --certificatesresolvers.le.acme.tlschallenge=true
-            # Habilitar el log de acceso para peticiones HTTP
-            - --accesslog
-            # Habilita Traefik para el log, configuraciones y errores
-            - --log
-        networks:
-            # Se utiliza la red pública creada para compartir Traefik
-            # Y cualquier otro servicio que necesite ser publicamente disponible en HTTPS
-            - traefik-public
-
-volumes:
-    # Creamos un volumen para almacenar los certificados de Let's Encrypt
-    # Hay una restricción para asegurarse de que Traefik esté desplegado en el mismo nodo de Docker
-    # que contiene el volumen donde se almacenan los certificados de Let's Encrypt
+      # Use the latest v2.3.x Traefik image available
+      image: traefik:v2.3
+      ports:
+        # Listen on port 80, default for HTTP, necessary to redirect to HTTPS
+        - 80:80
+        # Listen on port 443, default for HTTPS
+        - 443:443
+      restart: always
+      labels:
+        # Enable Traefik for this service, to make it available in the public network
+        - traefik.enable=true
+        # Define the port inside of the Docker service to use
+        - traefik.http.services.traefik-dashboard.loadbalancer.server.port=8080
+        # Make Traefik use this domain in HTTP
+        - traefik.http.routers.traefik-dashboard-http.entrypoints=http
+        - traefik.http.routers.traefik-dashboard-http.rule=Host(`traefik.test.carlatino.com`)
+        # Use the traefik-public network (declared below)
+        - traefik.docker.network=traefik-public
+        # traefik-https the actual router using HTTPS
+        - traefik.http.routers.traefik-dashboard-https.entrypoints=https
+        - traefik.http.routers.traefik-dashboard-https.rule=Host(`traefik.test.carlatino.com`)
+        - traefik.http.routers.traefik-dashboard-https.tls=true
+        # Use the "le" (Let's Encrypt) resolver created below
+        - traefik.http.routers.traefik-dashboard-https.tls.certresolver=le
+        # Use the special Traefik service api@internal with the web UI/Dashboard
+        - traefik.http.routers.traefik-dashboard-https.service=api@internal
+        # https-redirect middleware to redirect HTTP to HTTPS
+        - traefik.http.middlewares.https-redirect.redirectscheme.scheme=https
+        - traefik.http.middlewares.https-redirect.redirectscheme.permanent=true
+        # traefik-http set up only to use the middleware to redirect to https
+        - traefik.http.routers.traefik-dashboard-http.middlewares=https-redirect
+        # admin-auth middleware with HTTP Basic auth
+        # Using the environment variables USERNAME and HASHED_PASSWORD
+        - traefik.http.middlewares.admin-auth.basicauth.users=${USERNAME?Variable not set}:${HASHED_PASSWORD?Variable not set}
+        # Enable HTTP Basic auth, using the middleware created above
+        - traefik.http.routers.traefik-dashboard-https.middlewares=admin-auth
+      volumes:
+        # Add Docker as a mounted volume, so that Traefik can read the labels of other services
+        - /var/run/docker.sock:/var/run/docker.sock:ro
+        # Mount the volume to store the certificates
+        - traefik-public-certificates:/certificates
+      command:
+        # Enable Docker in Traefik, so that it reads labels from Docker services
+        - --providers.docker
+        # Do not expose all Docker services, only the ones explicitly exposed
+        - --providers.docker.exposedbydefault=false
+        # Create an entrypoint "http" listening on port 80
+        - --entrypoints.http.address=:80
+        # Create an entrypoint "https" listening on port 443
+        - --entrypoints.https.address=:443
+        # Create the certificate resolver "le" for Let's Encrypt, uses the environment variable EMAIL
+        - --certificatesresolvers.le.acme.email=admin@carlatino.com
+        # Store the Let's Encrypt certificates in the mounted volume
+        - --certificatesresolvers.le.acme.storage=/certificates/acme.json
+        # Use the TLS Challenge for Let's Encrypt
+        - --certificatesresolvers.le.acme.tlschallenge=true
+        # Enable the access log, with HTTP requests
+        - --accesslog
+        # Enable the Traefik log, for configurations and errors
+        - --log
+        # Enable the Dashboard and API
+        - --api
+      networks:
+        # Use the public network created to be shared between Traefik and
+        # any other service that needs to be publicly available with HTTPS
+        - traefik-public
+  
+  volumes:
+    # Create a volume to store the certificates, there is a constraint to make sure
+    # Traefik is always deployed to the same Docker node with the same volume containing
+    # the HTTPS certificates
     traefik-public-certificates:
-
-networks:
-    # Se utiliza la previamente creada red pública 'traefik-public'
-    # Compartida con otros servicios que necesitan estar públicamente disponibles a través de Traefik
+  
+  networks:
+    # Use the previously created public network "traefik-public", shared with other
+    # services that need to be publicly available via this Traefik
     traefik-public:
-        external: true
+      external: true

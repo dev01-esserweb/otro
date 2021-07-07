@@ -1,5 +1,5 @@
 services:
-    test:
+    backend:
         ports:
             - 80:80
 
